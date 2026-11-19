@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>Shannon Webmap Tool for Vancouver</title>
+  <link rel="stylesheet" href="https://js.arcgis.com/4.32/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.32/"></script>
+  <style>
+    html, body, #viewDiv { margin: 0; padding: 0; height: 100%; width: 100%; }
+    body { box-sizing: border-box; }
+    #appContainer { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+    #toolbox { display: flex; flex-direction: row; align-items: center; background: #fff; border-bottom: 1px solid #ccc; padding: 4px 8px; gap: 8px; z-index: 10; height: 44px; min-height: 36px; max-height: 48px; box-shadow: 0 2px 4px rgba(0,0,0,0.03); position: relative; }
+    #toolbox button { background: #f8f8f8; border: 1px solid #ccc; border-radius: 4px; padding: 6px 14px; font-size: 14px; cursor: pointer; transition: background 0.2s; }
+    #toolbox button.active, #toolbox button:focus { background: #e0eaff; border-color: #7dafff; outline: none; }
+    #mainContent { flex: 1; display: flex; flex-direction: row; min-height: 0; min-width: 0; }
+    #viewDiv { flex: 1; min-width: 0; min-height: 0; position: relative; z-index: 1; }
+  #manipulator { width: 420px; max-width: 90vw; background: #fff; border-left: 1px solid #ccc; box-shadow: -2px 0 6px rgba(0,0,0,0.04); display: none; flex-direction: column; align-items: stretch; padding: 0; z-index: 10; min-width: 300px; transition: width 0.2s; overflow-y: auto; }
+    .tool-panel, .dialog-panel { display: none; flex: 0 0 auto; padding: 16px 14px 14px 14px; border-bottom: 1px solid #eee; background: #fff; }
+    .tool-panel.active, .dialog-panel.active { display: block; }
+    .dialog-panel { background: #f7faff; border-left: 4px solid #7dafff; margin-bottom: 8px; }
+    .panel-title { font-weight: bold; font-size: 16px; margin-bottom: 8px; color: #1a3a5b; }
+    @media (max-width: 900px) { #manipulator { width: 200px; min-width: 120px; } #toolbox { font-size: 13px; } }
+    #legendContainer_2, #pinsLegendContainer, #vancouverZoningFilterOptions { max-width: 100%; min-width: 250px; max-height: 350px; overflow-y: auto; overflow-x: auto; }
+    #filterContainer label { display: block; }
+    #transparencyContainer label { font-weight: bold; }
+    #transparencyContainer input[type="range"] { width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="appContainer">
+    <div id="toolbox">
+      <button id="measureButton">Measure</button>
+      <button id="transparencyButton">Zone Transparency</button>
+      <button id="pinsButton">Billboard Pins</button>
+      <button id="transitShelterButton">Transit Shelter</button>
+      <button id="filterButton">Filter by ZONING</button>
+      <button id="VancouverLayerButton">Hide Vancouver Zoning</button>
+      <button id="legendToggleButton2">Open Vancouver Zoning Legend</button>
+      <button id="searchButton">Search</button>
+      <button id="suitabilityButton">Suitability</button>
+      <button id="saveLoadButton">Save/Load</button>
+      <button id="home">Home</button>
+    </div>
+    <div id="mainContent">
+      <div id="viewDiv"></div>
+      <div id="manipulator">
+        <div id="measurePanel" class="tool-panel">
+          <div class="panel-title">Measure</div>
+          <p>Click on the map to start measuring distance.</p>
+        </div>
+        <div id="measureResultPanel" class="dialog-panel">
+          <div class="panel-title">Measurement Results</div>
+          <div id="measureResults"></div>
+        </div>
+        <div id="transparencyPanel" class="tool-panel">
+          <div class="panel-title">Vancouver Zoning</div>
+          <div id="transparencyContainer2">
+            <label for="opacitySlider2">Vancouver Zoning Opacity: <span id="opacityValue2">1</span></label>
+            <input type="range" id="opacitySlider2" min="0" max="1" step="0.1" value="1" />
+          </div>
+        </div>
+        <div id="vancouverZoningLegendPanel" class="tool-panel">
+          <div class="panel-title">Vancouver Zoning Group Legend</div>
+          <div id="legendContainer_2"></div>
+        </div>
+        <div id="pinsPanel" class="tool-panel">
+          <div class="panel-title">Billboard Pins Legend</div>
+          <button id="togglePinsLayerButton">Hide</button>
+          <button id="togglePinArrowsButton">Hide Arrows</button>
+          <div id="pinsLegendContainer"></div>
+        </div>
+        <div id="transitShelterPanel" class="tool-panel">
+          <div class="panel-title">Transit Shelter Legend</div>
+          <button id="toggleTransitLayerButton">Hide</button>
+          <button id="toggleTransitArrowsButton">Hide Arrows</button>
+          <div id="transitLegendContainer"></div>
+        </div>
+        <div id="filterPanel" class="tool-panel">
+          <div class="panel-title">Filter by ZONING</div>
+          <div id="filterContainer">
+            <strong>Select Vancouver zoning code:</strong>
+            <div id="vancouverZoningFilterOptions"></div>
+            <button id="applyVancouverZoningFilter">Apply</button>
+            <button id="clearVancouverZoningFilter">Clear</button>
+            <button id="predefinedVancouverZoningFilter">Predefined</button>
+          </div>
+        </div>
+        <div id="searchPanel" class="tool-panel">
+          <div class="panel-title">Search</div>
+          <div id="searchWidget"></div>
+        </div>
+        <div id="suitabilityPanel" class="tool-panel">
+          <div class="panel-title">Suitability Layers</div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="vettedCheckbox">
+                <span style="font-weight: bold;">Vetted Area</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="vettedOpacityValue">1.0</span></label>
+                <input type="range" id="vettedOpacitySlider" min="0" max="1" step="0.1" value="1" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="roadNetworkCheckbox">
+                <span style="font-weight: bold;">Road Network Buffer (50m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="roadNetworkOpacityValue">1.0</span></label>
+                <input type="range" id="roadNetworkOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="residentialSignDistrictCheckbox">
+                <span style="font-weight: bold;">Residential Sign District Buffer (60m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="residentialSignDistrictOpacityValue">1.0</span></label>
+                <input type="range" id="residentialSignDistrictOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="railwayTransitBufferCheckbox">
+                <span style="font-weight: bold;">Railway &amp; Transit Buffer (60m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="railwayTransitBufferOpacityValue">1.0</span></label>
+                <input type="range" id="railwayTransitBufferOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="cd1SitesBufferCheckbox">
+                <span style="font-weight: bold;">CD-1 Sites Buffer (15m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="cd1SitesBufferOpacityValue">1.0</span></label>
+                <input type="range" id="cd1SitesBufferOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="busShelterBufferCheckbox">
+                <span style="font-weight: bold;">Bus Shelter Buffer (15m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="busShelterBufferOpacityValue">1.0</span></label>
+                <input type="range" id="busShelterBufferOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" id="bridgesRampsBufferCheckbox">
+                <span style="font-weight: bold;">Bridges &amp; Ramps Buffer (50m)</span>
+              </label>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="bridgesRampsBufferOpacityValue">1.0</span></label>
+                <input type="range" id="bridgesRampsBufferOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+            </div>
+            <div>
+              <div style="font-weight: bold; margin-bottom: 4px;">Billboard Pins Buffer</div>
+              <div style="margin-left: 28px; margin-top: 4px;">
+                <label style="font-size: 11px; color: #555;">Opacity: <span id="pinsBufferOpacityValue">1.0</span></label>
+                <input type="range" id="pinsBufferOpacitySlider" min="0" max="1" step="0.1" value="1.0" style="width: 100%;">
+              </div>
+              <div style="margin-left: 28px; margin-top: 8px; padding: 8px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+                <label style="font-size: 11px; font-weight: bold; color: #333;">Regulation currently is 50 m</label>
+                <div style="display: flex; gap: 4px; align-items: center; margin-top: 4px;">
+                  <input type="number" id="pinsBufferInput" placeholder="Buffer (m)" min="0" step="1" style="width: 90px; padding: 4px; font-size: 12px; border: 1px solid #ccc; border-radius: 3px;">
+                  <span style="font-size: 11px; color: #666;">m</span>
+                  <button id="pinsBufferBtn" style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: #e8f5e8; border: 1px solid #4caf50; border-radius: 3px;">Apply</button>
+                  <button id="pinsBufferClearBtn" style="padding: 4px 8px; font-size: 11px; cursor: pointer; background: #ffeaea; border: 1px solid #f44336; border-radius: 3px;">Clear</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="saveLoadPanel" class="tool-panel">
+          <div class="panel-title">Save/Load Tools</div>
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <div style="font-weight: bold; margin-bottom: 8px;">Pin Drop</div>
+              <p style="font-size: 12px; color: #555; margin-bottom: 8px;">Click on the map to drop pins. Drop as many as you want.</p>
+              <button id="enablePinDropButton" style="background: #4caf50; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%;">Enable Pin Drop</button>
+              <button id="clearAllPinsButton" style="background: #f44336; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-top: 8px;">Clear All Pins</button>
+              <div id="pinDropStatus" style="margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 4px; font-size: 12px; display: none;"></div>
+            </div>
+            <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #ddd;">
+              <div style="font-weight: bold; margin-bottom: 8px;">Dropped Pins</div>
+              <button id="calculatePinsButton" style="background: #2196f3; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-bottom: 8px;">Calculate</button>
+              <div id="pinsListContainer" style="max-height: 400px; overflow-y: auto; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px; padding: 8px;">
+                <div id="pinsListEmpty" style="text-align: center; color: #999; font-size: 12px; padding: 20px;">No pins dropped yet</div>
+                <div id="pinsList" style="display: none; flex-direction: column; gap: 8px;"></div>
+              </div>
+              <button id="saveCSVButton" style="background: #4caf50; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-top: 8px;">Save as CSV</button>
+              <button id="loadCSVButton" style="background: #ff9800; color: white; border: none; border-radius: 4px; padding: 8px 16px; cursor: pointer; width: 100%; margin-top: 8px;">Load CSV</button>
+              <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    document.getElementById('home').addEventListener('click', function() {
+      window.location.href = 'index.html';
+    });
+    require([
+  "esri/Map", "esri/views/MapView", "esri/layers/FeatureLayer", "esri/layers/GeoJSONLayer", "esri/widgets/ScaleBar",
+  "esri/widgets/BasemapToggle", "esri/widgets/DistanceMeasurement2D", "esri/widgets/AreaMeasurement2D",
+  "esri/layers/CSVLayer", "esri/widgets/Legend", "esri/widgets/Search", "esri/layers/GraphicsLayer",
+  "esri/geometry/geometryEngine", "esri/Graphic", "esri/rest/locator"
+    ], function (
+  EsriMap, MapView, FeatureLayer, GeoJSONLayer, ScaleBar, BasemapToggle,
+  DistanceMeasurement2D, AreaMeasurement2D, CSVLayer, Legend, Search, GraphicsLayer,
+  geometryEngine, Graphic, locator
+    ) {
+      const vettedArea = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Vancouver_vetted.geojson",
+        title: "Vetted Area",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [76, 230, 0, 0.7],
+            outline: { color: [0, 120, 0, 1], width: 1 }
+          }
+        }
+      });
+
+      const roadNetwork = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Street_Buffer.geojson",
+        title: "Road Network Buffer (50m)",
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [255, 0, 0, 1],
+            outline: { color: [255, 0, 0, 1], width: 1 }
+          }
+        }
+      });
+
+      const residentialSignDistrictBuffer = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Residential_Sign_District_Buffer.geojson",
+        title: "Residential Sign District Buffer (60m)",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [0, 122, 255, 1],
+            outline: { color: [0, 80, 180, 1], width: 1 }
+          }
+        }
+      });
+
+      const railwayTransitBuffer = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Railways_Buffer.geojson",
+        title: "Railway & Transit Buffer (60m)",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [255, 165, 0, 1],
+            outline: { color: [1255, 165, 0, 1], width: 1 }
+          }
+        }
+      });
+
+      const cd1SitesBuffer = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/CD_1_Sites_Buffer.geojson",
+        title: "CD-1 Sites Buffer (15m)",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [160, 32, 240, 1],
+            outline: { color: [160, 32, 240, 1], width: 1 }
+          }
+        }
+      });
+
+      const busShelterBuffer = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Bus_Shelter_Buffer.geojson",
+        title: "Bus Shelter Buffer (15m)",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [236, 64, 122, 1],
+            outline: { color: [236, 64, 122, 1], width: 1 }
+          }
+        }
+      });
+
+      const bridgesRampsBuffer = new GeoJSONLayer({
+        url: "https://raw.githubusercontent.com/Link0923/Vancouver/main/Bridges_Ramps_Buffer.geojson",
+        title: "Bridges & Ramps Buffer (50m)",
+        visible: false,
+        renderer: {
+          type: "simple",
+          symbol: {
+            type: "simple-fill",
+            color: [0, 170, 170, 1],
+            outline: { color: [0, 170, 170, 1], width: 1 }
+          }
+        }
+      });
+      
+      const pinsBuffer = new GraphicsLayer({ title: "Billboard Pins Buffer" });
+      const userPinsLayer = new GraphicsLayer({ title: "User Pins" });
+      
+      const zoningClassStyles = [
+        { value: "BCPED", color: "#FF2B18" },
+        { value: "C", color: "#FE731A" },
+        { value: "CD", color: "#FDA315" },
+        { value: "CWD", color: "#F8C823" },
+        { value: "DD", color: "#F7E51B" },
+        { value: "DEOD", color: "#EBFD29" },
+        { value: "FC", color: "#9CFE28" },
+        { value: "FCCDD", color: "#00FE24" },
+        { value: "FM", color: "#48FD24" },
+        { value: "FSD", color: "#B8FE29" },
+        { value: "HA", color: "#1DF6FE" },
+        { value: "I", color: "#2AD7FD" },
+        { value: "IC", color: "#29B9FD" },
+        { value: "M", color: "#5688FD" },
+        { value: "MC", color: "#614BFD" },
+        { value: "R1", color: "#7C13FD" },
+        { value: "R3", color: "#C619FD" },
+        { value: "R4", color: "#FF26FC" },
+        { value: "R5", color: "#FF19A8" },
+        { value: "RA", color: "#FF1C4A" },
+        { value: "RM", color: "#FB5430" },
+        { value: "RR", color: "#E69077" },
+        { value: "RT", color: "#BDBEBE" }
+      ];
+
+      const vancouverZoning = [
+        new FeatureLayer({
+          url: "https://services3.arcgis.com/qrcTTRTwUoS8N47o/ArcGIS/rest/services/ZoningDistrict/FeatureServer/0",
+          title: "Vancouver Zoning Districts",
+          outFields: ["*"],
+          popupTemplate: {
+            title: "{ZONENAME}",
+            content: [{
+              type: "fields",
+              fieldInfos: [
+                { fieldName: "ZONECLASS", label: "Zone Class" },
+                { fieldName: "ZONEDESC", label: "Description" },
+                { fieldName: "ZONING", label: "Zone" },
+                { fieldName: "URL", label: "URL" }
+              ]
+            }]
+          },
+          labelingInfo: [{
+            labelExpressionInfo: { expression: "$feature.ZONING" },
+            symbol: {
+              type: "text",
+              color: "#222",
+              haloColor: "#fff",
+              haloSize: "1px",
+              font: { size: 12, family: "Arial", weight: "bold" }
+            },
+            labelPlacement: "always-horizontal"
+          }],
+          labelsVisible: true,
+          renderer: {
+            type: "unique-value",
+            field: "ZONECLASS",
+            uniqueValueInfos: zoningClassStyles.map(({ value, color }) => ({
+              value,
+              symbol: {
+                type: "simple-fill",
+                color,
+                outline: { color: [0, 0, 0, 1], width: 0.5 }
+              },
+              label: value
+            }))
+          }
+        })
+      ];
+      
+      // Add error handling for all layers
+      vancouverZoning.forEach((layer, index) => {
+        layer.when(
+          function() {
+            console.log(`Layer ${index} (${layer.title}) loaded successfully`);
+          },
+          function(error) {
+            console.error(`Failed to load layer ${index} (${layer.title}):`, error);
+          }
+        );
+      });
+
+      const map = new EsriMap({ basemap: "hybrid" });
+      // Add all zoning layers to the map
+      vancouverZoning.forEach(layer => map.add(layer));
+      map.add(vettedArea);
+      map.add(roadNetwork);
+      map.add(residentialSignDistrictBuffer);
+      map.add(railwayTransitBuffer);
+      map.add(cd1SitesBuffer);
+      map.add(busShelterBuffer);
+      map.add(bridgesRampsBuffer);
+      map.add(pinsBuffer);
+      map.add(userPinsLayer);
+      const view = new MapView({ container: "viewDiv", map: map, center: [-123.1195, 49.2483], zoom: 12 });
+
+      let VancouverLayerButton = true;
+      // Set initial visibility for all zoning layers
+      vancouverZoning.forEach(layer => layer.visible = true);
+      roadNetwork.visible = false;
+
+      view.ui.add(new ScaleBar({ view, unit: "metric" }), "bottom-left");
+      view.ui.add(new BasemapToggle({ view, nextBasemap: "streets-vector" }), "top-left");
+      const distanceMeasurement2D = new DistanceMeasurement2D({ view, visible: false });
+      const areaMeasurement2D = new AreaMeasurement2D({ view, visible: false });
+      view.ui.add(distanceMeasurement2D, "top-right");
+      view.ui.add(areaMeasurement2D, "top-right");
+
+      // Create Search widget
+      const searchWidget = new Search({
+        view: view,
+        container: "searchWidget"
+      });
+
+      const pins = new CSVLayer({
+      url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHeQqYVmUr4RXj8RP7wLqBzY-0ycEfwghhvumQMRH0mfHCTGl-fwia683sF9UXfjU52w3oNi1E8NM_/pub?gid=1758079529&single=true&output=csv",
+      latitudeField: "Latitude",
+      longitudeField: "Longitude",
+      title: "Billboard Pins",
+      popupTemplate: {
+        title: "{Location Name}",
+        content: [{
+          type: "fields",
+          fieldInfos: [
+            { fieldName: "Product", label: "Type" },
+            { fieldName: "Product Group", label: "Group" },
+            { fieldName: "Facing Direction", label: "Direction" }
+          ]
+        }]
+      },
+      renderer: {
+        type: "unique-value",
+        field: "Product",
+        uniqueValueInfos: [
+          { value: "Digital", symbol: { type: "simple-marker", color: "#FF0000", size: "12px", outline: { color: "#00FF00", width: 2 } } },
+          { value: "Static", symbol: { type: "simple-marker", color: "#00FF00", size: "12px", outline: { color: "#FF0000", width: 2 } } }
+        ]
+      }
+      });
+
+      // Direction arrows drawn next to each billboard pin
+      const pinArrowsLayer = new GraphicsLayer({ title: "Billboard Pin Arrows", listMode: "hide" });
+      const directionAngles = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
+
+      function parseCsvRows(text) {
+        const rows = [];
+        let row = [], cell = "", inQuotes = false;
+        for (let i = 0; i < text.length; i++) {
+          const c = text[i];
+          if (inQuotes) {
+            if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+            else if (c === '"') inQuotes = false;
+            else cell += c;
+          } else if (c === '"') inQuotes = true;
+          else if (c === ",") { row.push(cell); cell = ""; }
+          else if (c === "\n" || c === "\r") {
+            if (c === "\r" && text[i + 1] === "\n") i++;
+            row.push(cell); cell = "";
+            if (row.some(v => v.trim() !== "")) rows.push(row);
+            row = [];
+          } else cell += c;
+        }
+        if (inQuotes) throw new Error("Unterminated quoted CSV field.");
+        if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+        return rows;
+      }
+
+      // Reads a published CSV directly so arrows don't depend on CSVLayer field naming
+      async function loadCsvPoints(url) {
+        const text = await (await fetch(url)).text();
+        const rows = parseCsvRows(text);
+        const headers = rows.shift().map(h => h.trim());
+        return rows.map(r => {
+          const o = {};
+          headers.forEach((h, i) => o[h] = (r[i] || "").trim());
+          o.lon = parseFloat(o.Longitude);
+          o.lat = parseFloat(o.Latitude);
+          return o;
+        }).filter(o => !isNaN(o.lon) && !isNaN(o.lat));
+      }
+
+      loadCsvPoints("https://docs.google.com/spreadsheets/d/e/2PACX-1vQHeQqYVmUr4RXj8RP7wLqBzY-0ycEfwghhvumQMRH0mfHCTGl-fwia683sF9UXfjU52w3oNi1E8NM_/pub?gid=1758079529&single=true&output=csv").then(rows => {
+        const arrows = [];
+        rows.forEach(a => {
+          const dir = String(a["Facing Direction"] || "").trim().toUpperCase();
+          if (!(dir in directionAngles)) return;
+          const angle = directionAngles[dir];
+          const rad = angle * Math.PI / 180;
+          const isDigital = String(a.Product || "").trim().toLowerCase() === "digital";
+          arrows.push(new Graphic({
+            geometry: { type: "point", longitude: a.lon, latitude: a.lat },
+            attributes: a,
+            symbol: {
+              type: "simple-marker",
+              style: "path",
+              path: "M0,-9 L5,3 L0,0 L-5,3 Z",
+              color: isDigital ? "#00A000" : "#E00000",
+              outline: { color: "#ffffff", width: 0.75 },
+              size: 14,
+              angle: angle,
+              xoffset: Math.sin(rad) * 14,
+              yoffset: Math.cos(rad) * 14
+            }
+          }));
+        });
+        pinArrowsLayer.addMany(arrows);
+      }).catch(e => console.error("Error building direction arrows:", e));
+
+      const transitShelters = new CSVLayer({
+        url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQHeQqYVmUr4RXj8RP7wLqBzY-0ycEfwghhvumQMRH0mfHCTGl-fwia683sF9UXfjU52w3oNi1E8NM_/pub?gid=584847108&single=true&output=csv",
+        latitudeField: "Latitude",
+        longitudeField: "Longitude",
+        title: "Transit Shelters",
+        popupTemplate: {
+          title: "{Location Name}",
+          content: [{
+            type: "fields",
+            fieldInfos: [
+              { fieldName: "Facing Direction", label: "Direction" },
+              { fieldName: "Illumination Status", label: "Status" }
+            ]
+          }]
+        },
+        renderer: {
+          type: "unique-value",
+          field: "Illumination Status",
+          uniqueValueInfos: [
+            { value: "Lit", label: "Lit", symbol: { type: "simple-marker", color: "#FFD700", size: "12px", outline: { color: "#800080", width: 2 } } },
+            { value: "Unlit", label: "Unlit", symbol: { type: "simple-marker", color: "#800080", size: "12px", outline: { color: "#FFD700", width: 2 } } }
+          ]
+        }
+      });
+
+      const transitArrowsLayer = new GraphicsLayer({ title: "Transit Shelter Arrows", listMode: "hide" });
+      loadCsvPoints("https://docs.google.com/spreadsheets/d/e/2PACX-1vQHeQqYVmUr4RXj8RP7wLqBzY-0ycEfwghhvumQMRH0mfHCTGl-fwia683sF9UXfjU52w3oNi1E8NM_/pub?gid=584847108&single=true&output=csv").then(rows => {
+        const arrows = [];
+        rows.forEach(a => {
+          const dir = String(a["Facing Direction"] || "").trim().toUpperCase();
+          if (!(dir in directionAngles)) return;
+          const angle = directionAngles[dir];
+          const rad = angle * Math.PI / 180;
+          const isLit = String(a["Illumination Status"] || "").trim().toLowerCase() === "lit";
+          arrows.push(new Graphic({
+            geometry: { type: "point", longitude: a.lon, latitude: a.lat },
+            attributes: a,
+            symbol: {
+              type: "simple-marker",
+              style: "path",
+              path: "M0,-9 L5,3 L0,0 L-5,3 Z",
+              color: isLit ? "#800080" : "#FFD700",
+              outline: { color: "#ffffff", width: 0.75 },
+              size: 14,
+              angle: angle,
+              xoffset: Math.sin(rad) * 14,
+              yoffset: Math.cos(rad) * 14
+            }
+          }));
+        });
+        transitArrowsLayer.addMany(arrows);
+      }).catch(e => console.error("Error building transit shelter arrows:", e));
+
+      // Build legend with checkboxes for each layer
+      function renderVancouverZoningLegend() {
+        const container = document.getElementById("legendContainer_2");
+        
+        container.innerHTML = zoningClassStyles.map(({ value, color }) => {
+          return `
+            <div style="display:flex;align-items:center;margin-bottom:8px;">
+              <span style="display:inline-block;width:22px;height:22px;background:${color};border:1px solid #444;margin-right:8px;"></span>
+              <label style="display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" class="zoning-class-toggle" value="${value}" checked>
+                <span style="font-weight:bold;">${value}</span>
+              </label>
+            </div>
+          `;
+        }).join("");
+        
+        container.addEventListener("change", updateVancouverZoningDefinitionExpression);
+      }
+
+      function updateVancouverZoningDefinitionExpression() {
+        const selectedClasses = Array.from(document.querySelectorAll("#legendContainer_2 .zoning-class-toggle:checked"))
+          .map(checkbox => checkbox.value);
+        vancouverZoning[0].definitionExpression = selectedClasses.length > 0
+          ? `ZONECLASS IN ('${selectedClasses.join("','")}')`
+          : "1=0";
+      }
+
+      const toolboxButtons = [
+        { id: "measureButton", panel: "measurePanel" },
+        { id: "transparencyButton", panel: "transparencyPanel" },
+        { id: "filterButton", panel: "filterPanel" },
+        { id: "legendToggleButton2", panel: "vancouverZoningLegendPanel" },
+        { id: "pinsButton", panel: "pinsPanel" },
+        { id: "transitShelterButton", panel: "transitShelterPanel" },
+        { id: "searchButton", panel: "searchPanel" },
+        { id: "suitabilityButton", panel: "suitabilityPanel" },
+        { id: "saveLoadButton", panel: "saveLoadPanel" }
+      ];
+      toolboxButtons.forEach(({ id, panel }) => {
+        document.getElementById(id).addEventListener("click", () => {
+          const panelElem = document.getElementById(panel);
+          const btnElem = document.getElementById(id);
+          const isActive = panelElem.classList.contains('active');
+          panelElem.classList.toggle('active');
+          btnElem.classList.toggle('active');
+          // Show manipulator if any panel is active, hide if none
+          setTimeout(() => {
+            const anyActive = Array.from(document.querySelectorAll('#manipulator .tool-panel.active, #manipulator .dialog-panel.active')).length > 0;
+            document.getElementById('manipulator').style.display = anyActive ? 'flex' : 'none';
+          }, 0);
+          if (id === "measureButton") {
+            if (!isActive) setActiveWidget("distance");
+            else { setActiveWidget(null); document.getElementById("measureResultPanel").classList.remove("active"); }
+          } else setActiveWidget(null);
+          
+          // Render legend when legend panel is opened
+          if (id === "legendToggleButton2" && !isActive) {
+            renderVancouverZoningLegend();
+          }
+        });
+      });
+      toolboxButtons.forEach(({panel, id}) => {
+  document.getElementById(panel).classList.remove('active');
+  document.getElementById(id).classList.remove('active');
+  document.getElementById('manipulator').style.display = 'none';
+      });
+      document.getElementById("measureResultPanel").classList.remove("active");
+
+      document.getElementById("VancouverLayerButton").addEventListener("click", function() {
+        VancouverLayerButton = !VancouverLayerButton;
+        // Toggle visibility for all zoning layers
+        vancouverZoning.forEach(layer => layer.visible = VancouverLayerButton);
+        this.textContent = VancouverLayerButton ? "Hide Vancouver Zoning" : "Show Vancouver Zoning";
+        
+        // Update legend checkboxes to match
+        document.querySelectorAll('.zoning-class-toggle').forEach(cb => {
+          cb.checked = VancouverLayerButton;
+        });
+        updateVancouverZoningDefinitionExpression();
+      });
+
+      let pinsLayerVisible = true;
+      function updatePinsLayer() {
+        if (pinsLayerVisible) { if (!map.layers.includes(pins)) map.add(pins); document.getElementById("togglePinsLayerButton").textContent = "Hide"; }
+        else { if (map.layers.includes(pins)) map.remove(pins); document.getElementById("togglePinsLayerButton").textContent = "Show"; }
+        const showArrows = pinsLayerVisible && pinArrowsVisible;
+        if (showArrows) { if (!map.layers.includes(pinArrowsLayer)) map.add(pinArrowsLayer); }
+        else if (map.layers.includes(pinArrowsLayer)) map.remove(pinArrowsLayer);
+        document.getElementById("togglePinArrowsButton").textContent = pinArrowsVisible ? "Hide Arrows" : "Show Arrows";
+      }
+      let pinArrowsVisible = true;
+      document.getElementById("togglePinArrowsButton").addEventListener("click", function() {
+        pinArrowsVisible = !pinArrowsVisible;
+        updatePinsLayer();
+      });
+      document.getElementById("togglePinsLayerButton").addEventListener("click", function() {
+        pinsLayerVisible = !pinsLayerVisible;
+        updatePinsLayer();
+      });
+      updatePinsLayer();
+      let pinsLegend = null;
+      document.getElementById("pinsButton").addEventListener("click", function() {
+        if (!pinsLegend) pinsLegend = new Legend({ view: view, container: "pinsLegendContainer", layerInfos: [{ layer: pins, title: "Billboard Pins" }] });
+      });
+
+      let transitLayerVisible = true;
+      let transitArrowsVisible = true;
+      function updateTransitLayer() {
+        const setLayer = (layer, show) => {
+          if (show && !map.layers.includes(layer)) map.add(layer);
+          else if (!show && map.layers.includes(layer)) map.remove(layer);
+        };
+        setLayer(transitShelters, transitLayerVisible);
+        setLayer(transitArrowsLayer, transitLayerVisible && transitArrowsVisible);
+        document.getElementById("toggleTransitLayerButton").textContent = transitLayerVisible ? "Hide" : "Show";
+        document.getElementById("toggleTransitArrowsButton").textContent = transitArrowsVisible ? "Hide Arrows" : "Show Arrows";
+      }
+      document.getElementById("toggleTransitLayerButton").addEventListener("click", function() {
+        transitLayerVisible = !transitLayerVisible;
+        updateTransitLayer();
+      });
+      document.getElementById("toggleTransitArrowsButton").addEventListener("click", function() {
+        transitArrowsVisible = !transitArrowsVisible;
+        updateTransitLayer();
+      });
+      updateTransitLayer();
+      let transitLegend = null;
+      document.getElementById("transitShelterButton").addEventListener("click", function() {
+        if (!transitLegend) transitLegend = new Legend({ view: view, container: "transitLegendContainer", layerInfos: [{ layer: transitShelters, title: "Transit Shelters" }] });
+      });
+
+      function setActiveWidget(type) {
+        switch (type) {
+          case "distance":
+            areaMeasurement2D.visible = false;
+            distanceMeasurement2D.visible = true;
+            distanceMeasurement2D.viewModel.start();
+            break;
+          case null:
+            areaMeasurement2D.visible = false;
+            distanceMeasurement2D.visible = false;
+            break;
+        }
+      }
+      distanceMeasurement2D.watch("measurement", function(measurement) {
+        if (measurement && measurement.state === "measured") {
+          const resultsPanel = document.getElementById("measureResultPanel");
+          const resultsDiv = document.getElementById("measureResults");
+          resultsDiv.innerHTML = `
+            <div><strong>Distance:</strong> ${measurement.distance && measurement.distance.text ? measurement.distance.text : "N/A"}</div>
+            <div><strong>Unit:</strong> ${measurement.distance && measurement.distance.unit ? measurement.distance.unit : "N/A"}</div>
+          `;
+          resultsPanel.classList.add("active");
+        }
+      });
+
+      document.getElementById("opacitySlider2").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        // Set opacity for all zoning layers
+        vancouverZoning.forEach(layer => layer.opacity = value);
+        document.getElementById("opacityValue2").innerText = value.toFixed(1);
+      });
+
+      function updateVancouverZoningFilterOptions() {
+        const optionsContainer = document.getElementById("vancouverZoningFilterOptions");
+        
+        if (!VancouverLayerButton) {
+          optionsContainer.innerHTML = "";
+          return;
+        }
+
+        // Query all layers and collect unique zones
+        const allZones = new Set();
+        const promises = vancouverZoning.map(layer => 
+          layer.queryFeatures({
+            where: "1=1",
+            outFields: ["ZONING"],
+            returnDistinctValues: true,
+            returnGeometry: false
+          })
+        );
+        
+        Promise.all(promises).then(function(results) {
+          results.forEach(result => {
+            result.features.forEach(f => {
+              if (f.attributes.ZONING) allZones.add(f.attributes.ZONING);
+            });
+          });
+          
+          optionsContainer.innerHTML = "";
+          Array.from(allZones).sort().forEach(zone => {
+            const label = document.createElement("label");
+            label.innerHTML = `<input type="checkbox" value="${zone}" /> ${zone}`;
+            optionsContainer.appendChild(label);
+          });
+        });
+      }
+
+      function applyVancouverZoningFilter() {
+        const selectedZones = Array.from(document.querySelectorAll('#vancouverZoningFilterOptions input:checked')).map(cb => cb.value);
+        const expression = selectedZones.length > 0 ? `ZONING IN ('${selectedZones.join("','")}')`  : "1=1";
+        // Apply filter to all zoning layers
+        vancouverZoning.forEach(layer => layer.definitionExpression = expression);
+      }
+
+      function clearVancouverZoningFilter() {
+        // Clear filter on all zoning layers
+        vancouverZoning.forEach(layer => layer.definitionExpression = "1=1");
+        document.querySelectorAll('#vancouverZoningFilterOptions input').forEach(cb => cb.checked = false);
+        updateVancouverZoningFilterOptions();
+      }
+
+      const predefinedZoningCodes = [
+        "C-2", "C-2B", "C-3A", "FC-1", "DD", "M-1", "M-1A", "M-1B", "M-2",
+        "MC-1", "MC-2", "I-1", "I-2", "I-3", "IC-1", "IC-2", "IC-3"
+      ];
+
+      function applyPredefinedVancouverZoningFilter() {
+        const expression = `ZONING IN ('${predefinedZoningCodes.join("','")}')`;
+        vancouverZoning.forEach(layer => {
+          layer.definitionExpression = expression;
+        });
+        const syncChecks = () => document.querySelectorAll('#vancouverZoningFilterOptions input').forEach(cb => {
+          cb.checked = predefinedZoningCodes.includes(cb.value);
+        });
+        syncChecks();
+        // Checkboxes may not be rendered yet; re-sync once they load
+        setTimeout(syncChecks, 1000);
+      }
+
+      // Watch visibility changes on all layers
+      vancouverZoning.forEach(layer => {
+        layer.watch("visible", (visible) => {
+          updateVancouverZoningFilterOptions();
+          if (visible) layer.definitionExpression = "1=1";
+        });
+      });
+
+      document.getElementById("applyVancouverZoningFilter").addEventListener("click", applyVancouverZoningFilter);
+      document.getElementById("clearVancouverZoningFilter").addEventListener("click", clearVancouverZoningFilter);
+      document.getElementById("predefinedVancouverZoningFilter").addEventListener("click", applyPredefinedVancouverZoningFilter);
+      document.getElementById("filterButton").addEventListener("click", function() {
+        updateVancouverZoningFilterOptions();
+      });
+
+      // Suitability Panel - Vetted Area Layer Controls
+      document.getElementById("vettedCheckbox").addEventListener("change", function() {
+        vettedArea.visible = this.checked;
+      });
+
+      document.getElementById("vettedOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        vettedArea.opacity = value;
+        document.getElementById("vettedOpacityValue").innerText = value.toFixed(1);
+      });
+
+      // Suitability Panel - Road Network Layer Controls
+      document.getElementById("roadNetworkCheckbox").addEventListener("change", function() {
+        roadNetwork.visible = this.checked;
+      });
+
+      document.getElementById("roadNetworkOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        roadNetwork.opacity = value;
+        document.getElementById("roadNetworkOpacityValue").innerText = value.toFixed(1);
+      });
+
+      document.getElementById("residentialSignDistrictCheckbox").addEventListener("change", function() {
+        residentialSignDistrictBuffer.visible = this.checked;
+      });
+
+      document.getElementById("residentialSignDistrictOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        residentialSignDistrictBuffer.opacity = value;
+        document.getElementById("residentialSignDistrictOpacityValue").innerText = value.toFixed(1);
+      });
+
+      document.getElementById("railwayTransitBufferCheckbox").addEventListener("change", function() {
+        railwayTransitBuffer.visible = this.checked;
+      });
+
+      document.getElementById("railwayTransitBufferOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        railwayTransitBuffer.opacity = value;
+        document.getElementById("railwayTransitBufferOpacityValue").innerText = value.toFixed(1);
+      });
+
+      document.getElementById("cd1SitesBufferCheckbox").addEventListener("change", function() {
+        cd1SitesBuffer.visible = this.checked;
+      });
+
+      document.getElementById("cd1SitesBufferOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        cd1SitesBuffer.opacity = value;
+        document.getElementById("cd1SitesBufferOpacityValue").innerText = value.toFixed(1);
+      });
+
+      document.getElementById("busShelterBufferCheckbox").addEventListener("change", function() {
+        busShelterBuffer.visible = this.checked;
+      });
+
+      document.getElementById("busShelterBufferOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        busShelterBuffer.opacity = value;
+        document.getElementById("busShelterBufferOpacityValue").innerText = value.toFixed(1);
+      });
+
+      document.getElementById("bridgesRampsBufferCheckbox").addEventListener("change", function() {
+        bridgesRampsBuffer.visible = this.checked;
+      });
+
+      document.getElementById("bridgesRampsBufferOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        bridgesRampsBuffer.opacity = value;
+        document.getElementById("bridgesRampsBufferOpacityValue").innerText = value.toFixed(1);
+      });
+
+      // Function to create buffer
+      function createBuffer(sourceLayer, bufferLayer, distance, color, opacity) {
+        bufferLayer.removeAll();
+        
+        const query = {
+          where: "1=1",
+          outFields: ["*"],
+          returnGeometry: true
+        };
+        
+        sourceLayer.queryFeatures(query).then(function(results) {
+          if (results.features.length === 0) {
+            alert("No features found to buffer.");
+            return;
+          }
+          
+          results.features.forEach(function(feature) {
+            const bufferedGeometry = geometryEngine.geodesicBuffer(feature.geometry, distance, "meters");
+            
+            const bufferGraphic = new Graphic({
+              geometry: bufferedGeometry,
+              symbol: {
+                type: "simple-fill",
+                color: color,
+                outline: {
+                  color: [0, 0, 0, 0.5],
+                  width: 1
+                }
+              }
+            });
+            
+            bufferLayer.add(bufferGraphic);
+          });
+          
+          bufferLayer.opacity = opacity;
+        }).catch(function(error) {
+          console.error("Error creating buffer:", error);
+          alert("Error creating buffer. Please try again.");
+        });
+      }
+
+      // Suitability Panel - Billboard Pins Buffer Layer Controls
+      document.getElementById("pinsBufferOpacitySlider").addEventListener("input", function() {
+        const value = parseFloat(this.value);
+        pinsBuffer.opacity = value;
+        document.getElementById("pinsBufferOpacityValue").innerText = value.toFixed(1);
+      });
+
+      // Billboard Pins Buffer
+      document.getElementById("pinsBufferBtn").addEventListener("click", function() {
+        const distance = parseFloat(document.getElementById("pinsBufferInput").value);
+        const opacity = parseFloat(document.getElementById("pinsBufferOpacitySlider").value);
+        if (!isNaN(distance) && distance > 0) {
+          createBuffer(pins, pinsBuffer, distance, [0, 255, 255, 0.4], opacity);
+        } else {
+          alert("Please enter a valid buffer distance in meters.");
+        }
+      });
+
+      document.getElementById("pinsBufferClearBtn").addEventListener("click", function() {
+        pinsBuffer.removeAll();
+        document.getElementById("pinsBufferInput").value = "";
+      });
+
+      // Save/Load Panel - Pin Drop functionality
+      let pinDropEnabled = false;
+      let pinDropHandler = null;
+      let pinCounter = 0;
+      const geocodeServiceUrl = "https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer";
+      const pinResultFields = [
+        { key: "address", label: "Address" },
+        { key: "zone", label: "Zone" },
+        { key: "distBillboard", label: "Distance to Billboard (m)" },
+        { key: "distTransitShelter", label: "Distance to Transit Shelter (m)" },
+        { key: "inVettedArea", label: "Vetted Area", layer: vettedArea },
+        { key: "inRoadNetworkBuffer", label: "Road Network Buffer", layer: roadNetwork },
+        { key: "inResidentialSignDistrict", label: "Residential Sign District", layer: residentialSignDistrictBuffer },
+        { key: "inRailwayTransit", label: "Railway & Transit", layer: railwayTransitBuffer },
+        { key: "inCd1Sites", label: "CD-1 Sites", layer: cd1SitesBuffer },
+        { key: "inBusShelter", label: "Bus Shelter", layer: busShelterBuffer },
+        { key: "inBridgesRamps", label: "Bridges & Ramps", layer: bridgesRampsBuffer }
+      ];
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, char => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[char]);
+      }
+
+      function pinPopupTemplate(calculated) {
+        const fields = [
+          { fieldName: "latitude", label: "Latitude" },
+          { fieldName: "longitude", label: "Longitude" }
+        ];
+        if (calculated) {
+          pinResultFields.forEach(field => fields.push({ fieldName: field.key, label: field.label }));
+        }
+        return { title: "User Pin #{id}", content: [{ type: "fields", fieldInfos: fields }] };
+      }
+
+      function updatePinsList() {
+        const pinsListContainer = document.getElementById("pinsList");
+        const pinsListEmpty = document.getElementById("pinsListEmpty");
+        const allGraphics = userPinsLayer.graphics.toArray();
+        const graphics = allGraphics.filter(g => g.attributes.id);
+        
+        if (graphics.length === 0) {
+          pinsListEmpty.style.display = "block";
+          pinsListContainer.style.display = "none";
+          return;
+        }
+        
+        graphics.sort((a, b) => a.attributes.id - b.attributes.id);
+        
+        pinsListEmpty.style.display = "none";
+        pinsListContainer.style.display = "flex";
+        
+        pinsListContainer.innerHTML = graphics.map(graphic => {
+          const attrs = graphic.attributes;
+          const lat = attrs.latitude.toFixed(6);
+          const lon = attrs.longitude.toFixed(6);
+          
+          let calculatedInfo = '';
+          if (attrs.calculated) {
+            calculatedInfo = `
+              <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee;">
+                <div style="font-size: 11px; color: #666;">
+                  ${pinResultFields.map(field => `<div><strong>${escapeHtml(field.label)}:</strong> ${escapeHtml(attrs[field.key] || 'N/A')}</div>`).join("")}
+                </div>
+              </div>
+            `;
+          }
+          
+          return `
+            <div style="background: white; border: 1px solid #ddd; border-radius: 4px; padding: 8px; font-size: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span style="font-weight: bold; color: #7d00ff;">Pin #${attrs.id}</span>
+                <button onclick="removePinById(${attrs.id})" style="background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; border-radius: 3px; padding: 2px 6px; font-size: 10px; cursor: pointer;">Remove</button>
+              </div>
+              <div style="color: #555; line-height: 1.4;">
+                <div><strong>Lat:</strong> ${lat}</div>
+                <div><strong>Lon:</strong> ${lon}</div>
+                ${calculatedInfo}
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+      
+      window.removePinById = function(id) {
+        const graphics = userPinsLayer.graphics.toArray();
+        const graphicToRemove = graphics.find(g => g.attributes.id === id);
+        const labelToRemove = graphics.find(g => g.attributes.pinId === id);
+        if (graphicToRemove) {
+          userPinsLayer.remove(graphicToRemove);
+          if (labelToRemove) {
+            userPinsLayer.remove(labelToRemove);
+          }
+          updatePinsList();
+          const statusDiv = document.getElementById("pinDropStatus");
+          statusDiv.style.display = "block";
+          statusDiv.textContent = `Pin #${id} removed. Total pins: ${userPinsLayer.graphics.filter(g => g.attributes.id).length}`;
+          statusDiv.style.background = "#fff3e0";
+          statusDiv.style.color = "#e65100";
+        }
+      };
+
+      document.getElementById("enablePinDropButton").addEventListener("click", function() {
+        pinDropEnabled = !pinDropEnabled;
+        const statusDiv = document.getElementById("pinDropStatus");
+        const button = this;
+        
+        if (pinDropEnabled) {
+          button.textContent = "Disable Pin Drop";
+          button.style.background = "#ff9800";
+          statusDiv.style.display = "block";
+          statusDiv.textContent = "Pin drop enabled! Click on the map to place pins.";
+          statusDiv.style.background = "#e8f5e9";
+          statusDiv.style.color = "#2e7d32";
+          
+          pinDropHandler = view.on("click", function(event) {
+            event.stopPropagation();
+            pinCounter++;
+            
+            const point = event.mapPoint;
+            
+            const pinGraphic = new Graphic({
+              geometry: point,
+              symbol: {
+                type: "simple-marker",
+                style: "circle",
+                color: [255, 0, 255, 0.8],
+                size: "12px",
+                outline: {
+                  color: [255, 255, 255],
+                  width: 2
+                }
+              },
+              attributes: {
+                id: pinCounter,
+                latitude: point.latitude,
+                longitude: point.longitude
+              },
+              popupTemplate: pinPopupTemplate(false)
+            });
+            
+            const labelGraphic = new Graphic({
+              geometry: point,
+              symbol: {
+                type: "text",
+                text: `Pin #${pinCounter}`,
+                color: "#FFFFFF",
+                haloColor: "#7d00ff",
+                haloSize: "2px",
+                xoffset: 0,
+                yoffset: -15,
+                font: {
+                  size: 11,
+                  family: "Arial",
+                  weight: "bold"
+                }
+              },
+              attributes: {
+                pinId: pinCounter
+              }
+            });
+            
+            userPinsLayer.add(pinGraphic);
+            userPinsLayer.add(labelGraphic);
+            const pinCount = userPinsLayer.graphics.filter(g => g.attributes.id).length;
+            statusDiv.textContent = `Pin #${pinCounter} added! Total pins: ${pinCount}`;
+            updatePinsList();
+          });
+        } else {
+          button.textContent = "Enable Pin Drop";
+          button.style.background = "#4caf50";
+          statusDiv.style.display = "block";
+          statusDiv.textContent = "Pin drop disabled.";
+          statusDiv.style.background = "#fff3e0";
+          statusDiv.style.color = "#e65100";
+          
+          if (pinDropHandler) {
+            pinDropHandler.remove();
+            pinDropHandler = null;
+          }
+        }
+      });
+
+      document.getElementById("clearAllPinsButton").addEventListener("click", function() {
+        userPinsLayer.removeAll();
+        pinCounter = 0;
+        updatePinsList();
+        const statusDiv = document.getElementById("pinDropStatus");
+        statusDiv.style.display = "block";
+        statusDiv.textContent = "All pins cleared!";
+        statusDiv.style.background = "#ffebee";
+        statusDiv.style.color = "#c62828";
+      });
+
+      document.getElementById("calculatePinsButton").addEventListener("click", async function() {
+        const allGraphics = userPinsLayer.graphics.toArray();
+        const graphics = allGraphics.filter(g => g.attributes.id);
+        
+        if (graphics.length === 0) {
+          alert("No pins to calculate. Please drop at least one pin.");
+          return;
+        }
+        
+        const button = this;
+        button.disabled = true;
+        button.textContent = "Calculating...";
+        button.style.background = "#90caf9";
+        
+        try {
+          let hasErrors = false;
+          async function getPointFeatures(layer) {
+            try {
+              const result = await layer.queryFeatures({
+                where: "1=1",
+                outFields: [],
+                returnGeometry: true
+              });
+              return result.features;
+            } catch (error) {
+              console.error(`Error querying ${layer.title}:`, error);
+              hasErrors = true;
+              return null;
+            }
+          }
+
+          function nearestDistance(point, features) {
+            if (features === null) return "Error";
+            if (features.length === 0) return "None found";
+            let minDistance = Infinity;
+            features.forEach(feature => {
+              const target = feature.geometry;
+              if (!target || target.longitude == null || target.latitude == null) return;
+              const distance = geometryEngine.geodesicLength({
+                type: "polyline",
+                spatialReference: { wkid: 4326 },
+                paths: [[[point.longitude, point.latitude], [target.longitude, target.latitude]]]
+              }, "meters");
+              if (Number.isFinite(distance) && distance < minDistance) minDistance = distance;
+            });
+            return minDistance === Infinity ? "None found" : minDistance.toFixed(2);
+          }
+
+          const [billboards, shelters] = await Promise.all([
+            getPointFeatures(pins),
+            getPointFeatures(transitShelters)
+          ]);
+
+          for (const graphic of graphics) {
+            const point = graphic.geometry;
+            
+            let address = "N/A";
+            try {
+              const response = await locator.locationToAddress(geocodeServiceUrl, {
+                location: point
+              });
+              
+              if (response && response.address) {
+                address = response.address;
+              } else {
+                address = "Address not found";
+              }
+            } catch (error) {
+              console.error("Error getting address:", error);
+              hasErrors = true;
+              address = "Address lookup failed";
+            }
+            
+            let zone = "N/A";
+            try {
+              for (let j = 0; j < vancouverZoning.length; j++) {
+                const zoneResult = await vancouverZoning[j].queryFeatures({
+                  geometry: point,
+                  spatialRelationship: "intersects",
+                  outFields: ["ZONECLASS"],
+                  returnGeometry: false
+                });
+                if (zoneResult.features.length > 0) {
+                  zone = zoneResult.features[0].attributes.ZONECLASS || "N/A";
+                  break; // First match found
+                }
+              }
+            } catch (e) {
+              console.error("Error querying zone:", e);
+              hasErrors = true;
+              zone = "Error";
+            }
+            
+            const areaResults = await Promise.all(pinResultFields.filter(field => field.layer).map(async field => {
+              try {
+                const count = await field.layer.queryFeatureCount({
+                  geometry: point,
+                  spatialRelationship: "intersects"
+                });
+                return [field.key, count > 0 ? "Yes" : "No"];
+              } catch (error) {
+                console.error(`Error querying ${field.label}:`, error);
+                hasErrors = true;
+                return [field.key, "Error"];
+              }
+            }));
+            
+            graphic.attributes.calculated = true;
+            graphic.attributes.address = address;
+            graphic.attributes.zone = zone;
+            graphic.attributes.distBillboard = nearestDistance(point, billboards);
+            graphic.attributes.distTransitShelter = nearestDistance(point, shelters);
+            areaResults.forEach(([key, value]) => graphic.attributes[key] = value);
+            
+            graphic.popupTemplate = pinPopupTemplate(true);
+          }
+          
+          updatePinsList();
+          
+          const statusDiv = document.getElementById("pinDropStatus");
+          statusDiv.style.display = "block";
+          statusDiv.textContent = hasErrors
+            ? "Calculation completed with errors. Check the results and console for details."
+            : "Calculation complete for all pins!";
+          statusDiv.style.background = hasErrors ? "#fff3e0" : "#e3f2fd";
+          statusDiv.style.color = hasErrors ? "#e65100" : "#1565c0";
+          
+        } catch (error) {
+          console.error("Error during calculation:", error);
+          alert("An error occurred during calculation. Check console for details.");
+        } finally {
+          button.disabled = false;
+          button.textContent = "Calculate";
+          button.style.background = "#2196f3";
+        }
+      });
+
+      document.getElementById("saveCSVButton").addEventListener("click", function() {
+        const allGraphics = userPinsLayer.graphics.toArray();
+        const graphics = allGraphics.filter(g => g.attributes.id);
+        
+        if (graphics.length === 0) {
+          alert("No pins to save. Please drop at least one pin.");
+          return;
+        }
+        
+        const csvValue = value => {
+          const text = String(value == null ? "" : value);
+          return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        };
+        const headers = ["Pin ID", "Latitude", "Longitude", "Calculated", ...pinResultFields.map(field => field.label)];
+        let csvContent = headers.map(csvValue).join(",") + "\n";
+        
+        graphics.forEach(graphic => {
+          const attrs = graphic.attributes;
+          const row = [
+            attrs.id,
+            attrs.latitude,
+            attrs.longitude,
+            attrs.calculated ? "Yes" : "No",
+            ...pinResultFields.map(field => attrs.calculated ? (attrs[field.key] || "") : "")
+          ];
+          csvContent += row.map(csvValue).join(',') + '\n';
+        });
+        
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const filename = `vancouver_pins_${timestamp}.csv`;
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+        
+        const statusDiv = document.getElementById("pinDropStatus");
+        statusDiv.style.display = "block";
+        statusDiv.textContent = `CSV file saved: ${filename}`;
+        statusDiv.style.background = "#e8f5e9";
+        statusDiv.style.color = "#2e7d32";
+      });
+
+      document.getElementById("loadCSVButton").addEventListener("click", function() {
+        document.getElementById("csvFileInput").click();
+      });
+
+      document.getElementById("csvFileInput").addEventListener("change", function(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onerror = function() {
+          console.error("Error reading CSV:", reader.error);
+          alert("Error reading CSV file. Please try again.");
+          event.target.value = '';
+        };
+        reader.onload = function(e) {
+          try {
+            const rows = parseCsvRows(e.target.result);
+            if (rows.length < 2) throw new Error("CSV file has no pin data.");
+            const headers = rows.shift().map(header => header.trim().replace(/^\uFEFF/, "").toLowerCase());
+            const latitudeIndex = headers.indexOf("latitude");
+            const longitudeIndex = headers.indexOf("longitude");
+            if (latitudeIndex < 0 || longitudeIndex < 0) throw new Error("CSV must have Latitude and Longitude columns.");
+            const calculatedIndex = headers.indexOf("calculated");
+            const dataRows = rows.map((row, index) => {
+              const latText = (row[latitudeIndex] || "").trim();
+              const lonText = (row[longitudeIndex] || "").trim();
+              const lat = Number(latText);
+              const lon = Number(lonText);
+              if (!latText || !lonText || !Number.isFinite(lat) || !Number.isFinite(lon) ||
+                  lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                throw new Error(`Invalid coordinates in CSV row ${index + 2}.`);
+              }
+              const calculatedValue = calculatedIndex < 0 ? "" : (row[calculatedIndex] || "").trim().toLowerCase();
+              if (calculatedValue && calculatedValue !== "yes" && calculatedValue !== "no") {
+                throw new Error(`Invalid Calculated value in CSV row ${index + 2}.`);
+              }
+              const attributes = { latitude: lat, longitude: lon };
+              pinResultFields.forEach(field => {
+                const fieldIndex = headers.indexOf(field.label.toLowerCase());
+                if (fieldIndex >= 0 && row[fieldIndex] != null && row[fieldIndex] !== "") {
+                  attributes[field.key] = row[fieldIndex];
+                }
+              });
+              attributes.calculated = calculatedIndex >= 0
+                ? calculatedValue === "yes"
+                : pinResultFields.some(field => attributes[field.key] && attributes[field.key] !== "N/A");
+              return attributes;
+            });
+
+            // Save existing pins before loading new ones
+            const allGraphics = userPinsLayer.graphics.toArray();
+            const existingPins = allGraphics.filter(g => g.attributes.id);
+            const existingLabels = allGraphics.filter(g => g.attributes.pinId);
+            
+            // Store existing pin data
+            const existingPinData = existingPins.map(pin => ({
+              graphic: pin,
+              geometry: pin.geometry,
+              attributes: { ...pin.attributes }
+            }));
+
+            let newPinId = 0;
+            let loadedCount = 0;
+
+            // Load new pins from CSV first
+            dataRows.forEach(attributes => {
+              newPinId++;
+
+              const point = {
+                type: "point",
+                longitude: attributes.longitude,
+                latitude: attributes.latitude
+              };
+
+              const pinGraphic = new Graphic({
+                geometry: point,
+                symbol: {
+                  type: "simple-marker",
+                  style: "circle",
+                  color: [255, 0, 255, 0.8],
+                  size: "12px",
+                  outline: {
+                    color: [255, 255, 255],
+                    width: 2
+                  }
+                },
+                attributes: { ...attributes, id: newPinId },
+                popupTemplate: pinPopupTemplate(attributes.calculated)
+              });
+
+              const labelGraphic = new Graphic({
+                geometry: point,
+                symbol: {
+                  type: "text",
+                  text: `Pin #${newPinId}`,
+                  color: "#FFFFFF",
+                  haloColor: "#7d00ff",
+                  haloSize: "2px",
+                  xoffset: 0,
+                  yoffset: -15,
+                  font: {
+                    size: 11,
+                    family: "Arial",
+                    weight: "bold"
+                  }
+                },
+                attributes: {
+                  pinId: newPinId
+                }
+              });
+
+              userPinsLayer.add(pinGraphic);
+              userPinsLayer.add(labelGraphic);
+              loadedCount++;
+            });
+
+            // Now renumber existing pins to come after loaded pins
+            existingPinData.forEach((pinData, index) => {
+              newPinId++;
+              
+              // Update the pin graphic attributes
+              pinData.graphic.attributes.id = newPinId;
+              
+              // Find and remove the old label
+              const correspondingLabel = existingLabels.find(label => 
+                label.attributes.pinId === pinData.attributes.id
+              );
+              
+              if (correspondingLabel) {
+                userPinsLayer.remove(correspondingLabel);
+                
+                // Create new label with updated number
+                const newLabelGraphic = new Graphic({
+                  geometry: pinData.geometry,
+                  symbol: {
+                    type: "text",
+                    text: `Pin #${newPinId}`,
+                    color: "#FFFFFF",
+                    haloColor: "#7d00ff",
+                    haloSize: "2px",
+                    xoffset: 0,
+                    yoffset: -15,
+                    font: {
+                      size: 11,
+                      family: "Arial",
+                      weight: "bold"
+                    }
+                  },
+                  attributes: {
+                    pinId: newPinId
+                  }
+                });
+                
+                userPinsLayer.add(newLabelGraphic);
+              }
+            });
+
+            // Update pin counter to continue from the new max
+            pinCounter = newPinId;
+
+            // Update the display
+            updatePinsList();
+
+            // Show confirmation
+            const statusDiv = document.getElementById("pinDropStatus");
+            statusDiv.style.display = "block";
+            statusDiv.textContent = `Loaded ${loadedCount} pins from CSV. ${existingPinData.length > 0 ? `Existing ${existingPinData.length} pin(s) renumbered from #${loadedCount + 1} to #${newPinId}.` : ''}`;
+            statusDiv.style.background = "#e8f5e9";
+            statusDiv.style.color = "#2e7d32";
+
+          } catch (error) {
+            console.error("Error loading CSV:", error);
+            alert(`Error loading CSV file: ${error.message}`);
+          } finally {
+            event.target.value = '';
+          }
+        };
+        reader.readAsText(file);
+      });
+    });
+  </script>
+</body>
+</html>
